@@ -59,6 +59,11 @@ jobs:
           context: "postgres-appliance/"
           load: true
           tags: ${{ steps.image.outputs.NAME }}
+          build-args: |
+            PGOLDVERSIONS=${{ env.PGOLDVERSIONS }}
+            TIMESCALEDB_TOOLKIT=${{ env.TIMESCALEDB_TOOLKIT }}
+            TIMESCALEDB_APACHE_ONLY=${{ env.TIMESCALEDB_APACHE_ONLY }}
+            TIMESCALEDB=${{ env.TIMESCALEDB }}
 
       - name: Test spilo docker image
         env:
