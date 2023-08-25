@@ -8,6 +8,8 @@ env:
   IMAGE_NAME: boskiv/spilo
   TIMESCALEDB_TOOLKIT: true
   TIMESCALEDB_APACHE_ONLY: false
+  PGOLDVERSIONS: ""
+  TIMESCALEDB: "2.11.2"
 
 jobs:
   publish:
