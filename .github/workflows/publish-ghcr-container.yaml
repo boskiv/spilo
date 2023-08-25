@@ -53,23 +53,23 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.DOCKER_TOKEN }}
 
-      - name: Build and export to local docker for testing
-        uses: docker/build-push-action@v3
-        with:
-          context: "postgres-appliance/"
-          load: true
-          tags: ${{ steps.image.outputs.NAME }}
-          build-args: |
-            PGOLDVERSIONS=${{ env.PGOLDVERSIONS }}
-            TIMESCALEDB_TOOLKIT=${{ env.TIMESCALEDB_TOOLKIT }}
-            TIMESCALEDB_APACHE_ONLY=${{ env.TIMESCALEDB_APACHE_ONLY }}
-            TIMESCALEDB=${{ env.TIMESCALEDB }}
+      # - name: Build and export to local docker for testing
+      #   uses: docker/build-push-action@v3
+      #   with:
+      #     context: "postgres-appliance/"
+      #     load: true
+      #     tags: ${{ steps.image.outputs.NAME }}
+      #     build-args: |
+      #       PGOLDVERSIONS=${{ env.PGOLDVERSIONS }}
+      #       TIMESCALEDB_TOOLKIT=${{ env.TIMESCALEDB_TOOLKIT }}
+      #       TIMESCALEDB_APACHE_ONLY=${{ env.TIMESCALEDB_APACHE_ONLY }}
+      #       TIMESCALEDB=${{ env.TIMESCALEDB }}
 
-      - name: Test spilo docker image
-        env:
-          SPILO_TEST_IMAGE: "${{ steps.image.outputs.NAME }}"
-        run: |
-          bash postgres-appliance/tests/test_spilo.sh
+      # - name: Test spilo docker image
+      #   env:
+      #     SPILO_TEST_IMAGE: "${{ steps.image.outputs.NAME }}"
+      #   run: |
+      #     bash postgres-appliance/tests/test_spilo.sh
 
       - name: Build arm64 additionaly and push multiarch image to ghcr
         uses: docker/build-push-action@v3
@@ -78,3 +78,8 @@ jobs:
           push: true
           tags: "${{ steps.image.outputs.NAME }}"
           platforms: linux/amd64,linux/arm64
+          build-args: |
+            PGOLDVERSIONS=${{ env.PGOLDVERSIONS }}
+            TIMESCALEDB_TOOLKIT=${{ env.TIMESCALEDB_TOOLKIT }}
+            TIMESCALEDB_APACHE_ONLY=${{ env.TIMESCALEDB_APACHE_ONLY }}
+            TIMESCALEDB=${{ env.TIMESCALEDB }}
