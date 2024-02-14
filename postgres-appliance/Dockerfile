@@ -1,6 +1,6 @@
 ARG BASE_IMAGE=ubuntu:22.04
 ARG PGVERSION=15
-ARG TIMESCALEDB="1.7.5 2.3.1 2.11.1"
+ARG TIMESCALEDB="1.7.5 2.3.1 2.11.2"
 ARG DEMO=false
 ARG COMPRESS=false
 ARG ADDITIONAL_LOCALES=
@@ -54,9 +54,10 @@ ARG WITH_PERL=false
 ARG DEB_PG_SUPPORTED_VERSIONS="$PGOLDVERSIONS $PGVERSION"
 
 # Install PostgreSQL, extensions and contribs
-ENV POSTGIS_VERSION=3.3 \
-    POSTGIS_LEGACY=3.2 \
-    BG_MON_COMMIT=beec726abb662b30e58b85218c28b30b5c3c3cb3 \
+ENV POSTGIS_VERSION=3.4 \
+    POSTGIS_LEGACY=3.3 \
+    POSTGIS_SUPER_LEGACY=3.2 \
+    BG_MON_COMMIT=a0e7c93458ee7d96b0c95d9a0a4c5bc7a72ff5f4 \
     PG_AUTH_MON_COMMIT=439697fe2980cf48f1760f45e04c2d69b2748e73 \
     PG_MON_COMMIT=34c35a86e6dea26930bf1f770048cea2c695b80b \
     SET_USER=REL4_0_1 \
@@ -76,7 +77,7 @@ COPY --from=dependencies-builder /builddeps/wal-g /usr/local/bin/
 COPY build_scripts/patroni_wale.sh build_scripts/compress_build.sh /builddeps/
 
 # Install patroni and wal-e
-ENV PATRONIVERSION=3.0.2
+ENV PATRONIVERSION=3.1.2
 ENV WALE_VERSION=1.1.1
 
 WORKDIR /
@@ -92,7 +93,7 @@ COPY --from=builder-false / /
 
 FROM builder-${COMPRESS}
 
-LABEL maintainer="Polina Bungina <polina.bungina@zalando.de>"
+LABEL maintainer="Team ACID @ Zalando <team-acid@zalando.de>"
 
 ARG PGVERSION
 ARG TIMESCALEDB
