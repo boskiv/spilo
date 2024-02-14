@@ -9,7 +9,7 @@ env:
   TIMESCALEDB_TOOLKIT: true
   TIMESCALEDB_APACHE_ONLY: false
   PGOLDVERSIONS: ""
-  TIMESCALEDB: "2.11.2"
+  TIMESCALEDB: "2.14.1"
 
 jobs:
   publish:
