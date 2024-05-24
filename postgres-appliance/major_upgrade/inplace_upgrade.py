@@ -76,8 +76,15 @@ def update_configs(new_version):
 
 def kill_patroni():
     logger.info('Restarting patroni')
-    patroni = next(iter(filter(lambda p: p.info['name'] == 'patroni', psutil.process_iter(['name']))), None)
-    if patroni:
+    if patroni := next(
+        iter(
+            filter(
+                lambda p: p.info['name'] == 'patroni',
+                psutil.process_iter(['name']),
+            )
+        ),
+        None,
+    ):
         patroni.kill()
 
 
@@ -152,9 +159,13 @@ class InplaceUpgrade(object):
                 logger.info('Maintenance mode %s', ('enabled' if paused else 'disabled'))
                 return True
 
-        remaining = [m.name for m in cluster.members if m.data.get('pause', False) != paused
-                     and m.name in old and old[m.name] != m.index]
-        if remaining:
+        if remaining := [
+            m.name
+            for m in cluster.members
+            if m.data.get('pause', False) != paused
+            and m.name in old
+            and old[m.name] != m.index
+        ]:
             return logger.error("%s members didn't recognized pause state after %s seconds", remaining, ttl)
 
     def resume_cluster(self):
@@ -171,10 +182,14 @@ class InplaceUpgrade(object):
         to all of them and puts into the `self.replica_connections` dict for a future usage.
         """
         self.replica_connections = {}
-        streaming = {a: l for a, l in self.postgresql.query(
-            ("SELECT client_addr, pg_catalog.pg_{0}_{1}_diff(pg_catalog.pg_current_{0}_{1}(),"
-             " COALESCE(replay_{1}, '0/0'))::bigint FROM pg_catalog.pg_stat_replication")
-            .format(self.postgresql.wal_name, self.postgresql.lsn_name))}
+        streaming = dict(
+            self.postgresql.query(
+                (
+                    "SELECT client_addr, pg_catalog.pg_{0}_{1}_diff(pg_catalog.pg_current_{0}_{1}(),"
+                    " COALESCE(replay_{1}, '0/0'))::bigint FROM pg_catalog.pg_stat_replication"
+                ).format(self.postgresql.wal_name, self.postgresql.lsn_name)
+            )
+        )
 
         def ensure_replica_state(member):
             ip = member.conn_kwargs().get('host')
@@ -302,7 +317,9 @@ hosts deny = *
 
     def start_rsyncd(self):
         self.create_rsyncd_configs()
-        self.rsyncd = subprocess.Popen(['rsync', '--daemon', '--no-detach', '--config=' + self.rsyncd_conf])
+        self.rsyncd = subprocess.Popen(
+            ['rsync', '--daemon', '--no-detach', f'--config={self.rsyncd_conf}']
+        )
         self.rsyncd_started = True
 
     def stop_rsyncd(self):
@@ -359,7 +376,7 @@ hosts deny = *
                 status[name] = False
                 ret = False
 
-        for name in status.keys():
+        for name in status:
             self.replica_connections.pop(name)
 
         logger.info('Waiting for replicas rsync to complete')

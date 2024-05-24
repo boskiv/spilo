@@ -39,7 +39,7 @@ STYLES['REPLICA'] = {'fg': 'yellow'}
 
 ec2 = None
 tunnels = {'patroni':None, 'postgres':None}
-managed_processes = dict()
+managed_processes = {}
 
 processed = False
 PIUCONFIG = '~/.config/piu/piu.yaml'
@@ -99,20 +99,17 @@ def process_options(opts):
 def cleanup():
     for name, process in managed_processes.items():
         if process.returncode is None:
-            logging.info('Terminating process {} (pid={})'.format(name, process.pid))
+            logging.info(f'Terminating process {name} (pid={process.pid})')
             process.kill()
     os.system('stty sane')
 
 
 def libpq_parameters():
-    parameters = dict()
-    parameters['host'] = 'localhost'
-    parameters['port'] = tunnels['postgres']
-
+    parameters = {'host': 'localhost', 'port': tunnels['postgres']}
     if pg_service_name is not None:
         parameters['service'] = pg_service_name
 
-    return parameters, ' '.join(['{}={}'.format(k, v) for (k, v) in parameters.items()])
+    return parameters, ' '.join([f'{k}={v}' for (k, v) in parameters.items()])
 
 
 @cli.command('connect', short_help='Connect using psql')
@@ -134,7 +131,7 @@ def connect(**options):
     psql_cmd = ['psql', libpq_parameters()[1]]
     psql_cmd.extend(options['psql_arguments'])
 
-    logging.debug('psql command: {}'.format(psql_cmd))
+    logging.debug(f'psql command: {psql_cmd}')
 
     psql = subprocess.Popen(psql_cmd)
     managed_processes['psql'] = psql
@@ -164,7 +161,7 @@ def list_spilos(**options):
     process_options(options)
 
     if options['tunnel']:
-        spilos = list()
+        spilos = []
     else:
         spilos = get_spilos(region=options['region'], clusters=options['clusters'], details=options['details'])
 
@@ -191,12 +188,10 @@ def print_spilos(spilos):
     if spilos[0].instances is None:
         columns = ['cluster', 'dns']
 
-    pretty_rows = list()
+    pretty_rows = []
 
     for s in spilos:
-        pretty_row = {'cluster': s.version}
-        pretty_row['dns'] = ', '.join(s.dns or list())
-
+        pretty_row = {'cluster': s.version, 'dns': ', '.join(s.dns or [])}
         if s.instances is not None:
             for i in s.instances:
                 pretty_row.update(i)
@@ -241,7 +236,7 @@ def get_spilo_resources(stack, cloud_formation_connection):
             if resource.logical_resource_id == 'PostgresLoadBalancer':
                 return resources
 
-    logging.debug('Stack {} is not a spilo appliance'.format(stack.stack_name))
+    logging.debug(f'Stack {stack.stack_name} is not a spilo appliance')
     return None
 
 
@@ -249,12 +244,18 @@ def update_spilo_info(spilos):
     global ec2
     global elb_conn
 
-    new_spilos = list()
-
-    for old_spilo in spilos:
-        new_spilos.append(Spilo(old_spilo.stack_name, old_spilo.version, old_spilo.dns, old_spilo.elb,
-                          get_stack_instance_details(old_spilo.stack), old_spilo.vpc_id, old_spilo.stack))
-    return new_spilos
+    return [
+        Spilo(
+            old_spilo.stack_name,
+            old_spilo.version,
+            old_spilo.dns,
+            old_spilo.elb,
+            get_stack_instance_details(old_spilo.stack),
+            old_spilo.vpc_id,
+            old_spilo.stack,
+        )
+        for old_spilo in spilos
+    ]
 
 
 def get_spilos(region, clusters=None, details=False):
@@ -279,20 +280,19 @@ def get_spilos(region, clusters=None, details=False):
     # # Getting a "DNSServerError: 400 Bad Request" when adding type='CNAME' to the below function call
     route53_records = route53.get_all_rrsets(hosted_zone_id=zones[0].id)
 
-    cname_records = list()
-
-    for rr in route53_records:
-        if rr.type == 'CNAME':
-            cname_records.append({'name': rr.name, 'resource_records': rr.resource_records})
-
-    spilos = list()
+    cname_records = [
+        {'name': rr.name, 'resource_records': rr.resource_records}
+        for rr in route53_records
+        if rr.type == 'CNAME'
+    ]
+    spilos = []
 
     # # How to recognize a Spilo: There are a few things we can use to determine which stack is a spilo
     # # The name itself is very volatile, therefore not a good candidate.
     # # Stacks containing a PostgresLoadBalancer are deemed to be a spilo, q:x
 
     # # We try to do as little work as possible. Therefore we try to filter out non-matching stacks asap
-    stacks = list()
+    stacks = []
     for stack in get_stacks(stack_refs=None, region=region, all=True):
         res = get_spilo_resources(stack, cf)
         if res is not None:
@@ -304,7 +304,7 @@ def get_spilos(region, clusters=None, details=False):
         elb = None
         instances = None
         vpc_id = None
-        dns = list()
+        dns = []
 
         for resource in resources:
             if resource.logical_resource_id == 'PostgresLoadBalancer':
@@ -336,17 +336,16 @@ def get_stack_instance_details(stack):
         ec2.get_only_instances(filters={'tag:aws:cloudformation:stack-id': stack.stack_id})
     instances_health = elb_conn.describe_instance_health(stack.stack_name)
 
-    instances = list()
+    instances = []
     for ii in instances_info:
         for ih in instances_health:
             if ih.instance_id == ii.id:
-                instance = {'instance_id': ii.id, 'private_ip': ii.private_ip_address,
-                            'launch_time': parse_time(ii.launch_time)}
-
-                if ih.state == 'InService':
-                    instance['role'] = 'MASTER'
-                else:
-                    instance['role'] = 'REPLICA'
+                instance = {
+                    'instance_id': ii.id,
+                    'private_ip': ii.private_ip_address,
+                    'launch_time': parse_time(ii.launch_time),
+                    'role': 'MASTER' if ih.state == 'InService' else 'REPLICA',
+                }
 
                 instances.append(instance)
 
@@ -381,11 +380,14 @@ def list_tunnels(cluster):
         'dsn',
     ]
 
-    rows = list()
+    rows = []
     if cluster is not None:
-        for p in processes:
-            if re.search(cluster, p['host']) or re.search(cluster, p.get('service', '')):
-                rows.append(p)
+        rows.extend(
+            p
+            for p in processes
+            if re.search(cluster, p['host'])
+            or re.search(cluster, p.get('service', ''))
+        )
     else:
         rows = processes
 
@@ -411,7 +413,7 @@ def get_my_processes():
                                         env={'LANG': 'C'}).splitlines()
     ps_output.reverse()
 
-    processes = list()
+    processes = []
 
     process_re = re.compile('^\s*(\d+)\s+([^\s]+).*SPILOCLUSTER=([^\s]*)')
     pgport_re = re.compile('SPILOPGPORT=(\d+)')
@@ -425,11 +427,9 @@ def get_my_processes():
     while len(ps_output) > 0:
         line = ps_output.pop().decode('utf-8')
 
-        match = process_re.search(line)
-        if match:
-            logging.debug('Matched line: {}'.format(line[0:120]))
-            process = dict()
-            process['pid'] = match.group(1)
+        if match := process_re.search(line):
+            logging.debug(f'Matched line: {line[:120]}')
+            process = {'pid': match.group(1)}
             process['process'] = match.group(2)
             process['cluster'] = match.group(3)
 
@@ -438,42 +438,28 @@ def get_my_processes():
             process['pid'] = match.group(1)
             process['process'] = match.group(2)
 
-            match = pgport_re.search(line)
-            if match:
+            if match := pgport_re.search(line):
                 process['pgport'] = match.group(1)
 
-            match = patroniport_re.search(line)
-            if match:
+            if match := patroniport_re.search(line):
                 process['patroniport'] = match.group(1)
 
-            match = host_re.search(line)
-            if match:
+            if match := host_re.search(line):
                 process['host'] = match.group(1)
 
-            match = vpc_re.search(line)
-            if match:
+            if match := vpc_re.search(line):
                 process['vpc_id'] = match.group(1)
 
-            match = service_re.search(line)
-            if match:
+            if match := service_re.search(line):
                 process['service'] = match.group(1)
 
-            logging.debug('Process: {}'.format(process))
+            logging.debug(f'Process: {process}')
 
             service_dsn = process.get('service')
-            if service_dsn is None:
-                service_dsn = ''
-            else:
-                service_dsn = ' service={}'.format(service_dsn)
-
-            process['dsn'] = '"host=localhost port={}{}"'.format(process['pgport'], service_dsn)
+            service_dsn = '' if service_dsn is None else f' service={service_dsn}'
+            process['dsn'] = f""""host=localhost port={process['pgport']}{service_dsn}\""""
             processes.append(process)
-        else:
-
-            # logging.debug("Disregarding line: {}".format(line))
-            pass
-
-    logging.debug('Processes : {}'.format(pretty(processes)))
+    logging.debug(f'Processes : {pretty(processes)}')
     return processes
 
 
@@ -504,7 +490,7 @@ def tunnel(**options):
         if pid is None:
             logging.warning("There was no tunnel to kill")
         else:
-            print("Terminating process with pid={}".format(pid))
+            print(f"Terminating process with pid={pid}")
             os.kill(int(pid), signal.SIGKILL)
         sys.exit(0)
 
@@ -516,7 +502,7 @@ def tunnel(**options):
     if pg_service_name is None:
         pg_service_env = ''
     else:
-        pg_service_env = 'export PGSERVICE={}'.format(pg_service_name)
+        pg_service_env = f'export PGSERVICE={pg_service_name}'
 
     print("""
 The ssh tunnel is running as a process with pid {pid}.
@@ -555,15 +541,14 @@ def get_pg_service():
     # # There are some precedence rules which we want to honour.
 
     if options.get('cluster') is None:
-        return None, dict()
+        return None, {}
 
-    filenames = list()
+    filenames = []
 
     if options.get('pg_service_file') is not None:
         filenames.append(options['pg_service_file'])
     else:
-        filenames.append('~/.pg_service.conf')
-        filenames.append('~/pg_service.conf')
+        filenames.extend(('~/.pg_service.conf', '~/pg_service.conf'))
         if filenames.append(os.environ.get('PGSYSCONFDIR')) is not None:
             filenames.append(os.environ.get('PGSYSCONFDIR') + '/pg_service.conf')
         filenames.append('/etc/pg_service.conf')
@@ -572,21 +557,22 @@ def get_pg_service():
 
     logging.debug(pretty(options))
 
-    defaults = dict()
-    defaults['port'] = options.get('port', 5432)
+    defaults = {'port': options.get('port', 5432)}
     defaults['host'] = options['cluster']
 
     parser = configparser.ConfigParser(defaults=defaults)
 
     services = [options['cluster'], 'spilo']
     parsed = parser.read(filenames)
-    logging.debug('Read pg_service definitions from the following files: {}'.format(parsed))
+    logging.debug(
+        f'Read pg_service definitions from the following files: {parsed}'
+    )
 
-    pg_service = dict()
+    pg_service = {}
 
     for service in services:
         if parser.has_section(service):
-            logging.debug('Using service definition [{}]'.format(service))
+            logging.debug(f'Using service definition [{service}]')
             return service, dict(parser.items(service, raw=True))
 
     return None, dict(parser.items('DEFAULT', raw=True))
@@ -598,7 +584,9 @@ def load_odd_config():
     if options.get('odd_config_file') is not None and os.path.isfile(options['odd_config_file']):
         with open(options['odd_config_file'], 'r') as f:
             odd_config = yaml.safe_load(f)
-        logging.debug('Loaded odd configuration from {}:\n{}'.format(options['odd_config_file'], pretty(odd_config)))
+        logging.debug(
+            f"Loaded odd configuration from {options['odd_config_file']}:\n{pretty(odd_config)}"
+        )
 
     return odd_config
 

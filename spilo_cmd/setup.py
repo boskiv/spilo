@@ -132,12 +132,12 @@ class ObjKeeper(type):
 
     instances = {}
 
-    def __init__(cls, name, bases, dct):
-        cls.instances[cls] = []
+    def __init__(self, name, bases, dct):
+        self.instances[self] = []
 
-    def __call__(cls, *args, **kwargs):
-        cls.instances[cls].append(super(ObjKeeper, cls).__call__(*args, **kwargs))
-        return cls.instances[cls][-1]
+    def __call__(self, *args, **kwargs):
+        self.instances[self].append(super(ObjKeeper, self).__call__(*args, **kwargs))
+        return self.instances[self][-1]
 
 
 def capture_objs(cls):
@@ -161,8 +161,7 @@ def read(fname):
 
 def setup_package():
     # Assemble additional setup commands
-    cmdclass = {}
-    cmdclass['docs'] = sphinx_builder()
+    cmdclass = {'docs': sphinx_builder()}
     cmdclass['doctest'] = sphinx_builder()
     cmdclass['test'] = PyTest
 

@@ -146,14 +146,11 @@ def find_backup(recovery_target_time, env):
         if not old_value:
             old_value = env[name]
         env[name] = value
-        backup_list = list_backups(env)
-        if backup_list:
-            if recovery_target_time:
-                backup = choose_backup(backup_list, recovery_target_time)
-                if backup:
-                    return backup, (name if value != old_value else None)
-            else:  # We assume that the LATEST backup will be for the biggest postgres version!
+        if backup_list := list_backups(env):
+            if not recovery_target_time:
                 return 'LATEST', (name if value != old_value else None)
+            if backup := choose_backup(backup_list, recovery_target_time):
+                return backup, (name if value != old_value else None)
     if recovery_target_time:
         raise Exception('Could not find any backups prior to the point in time {0}'.format(recovery_target_time))
     raise Exception('Could not find any backups')

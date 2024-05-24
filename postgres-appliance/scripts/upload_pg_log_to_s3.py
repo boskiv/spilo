@@ -20,7 +20,9 @@ def compress_pg_log():
     yesterday = datetime.now() - timedelta(days=1)
     yesterday_day_number = yesterday.strftime('%u')
 
-    log_file = os.path.join(os.getenv('PGLOG'), 'postgresql-' + yesterday_day_number + '.csv')
+    log_file = os.path.join(
+        os.getenv('PGLOG'), f'postgresql-{yesterday_day_number}.csv'
+    )
     archived_log_file = os.path.join(os.getenv('LOG_TMPDIR'), yesterday.strftime('%F') + '.csv.gz')
 
     if os.path.getsize(log_file) == 0:

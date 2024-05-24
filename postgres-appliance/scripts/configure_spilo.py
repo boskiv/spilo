@@ -88,7 +88,7 @@ def write_certificates(environment, overwrite):
     if set(ssl_keys) <= set(environment):
         logging.info('Writing custom ssl certificate')
         for k in ssl_keys:
-            write_file(environment[k], environment[k + '_FILE'], overwrite)
+            write_file(environment[k], environment[f'{k}_FILE'], overwrite)
         if 'SSL_CA' in environment:
             logging.info('Writing ssl ca certificate')
             write_file(environment['SSL_CA'], environment['SSL_CA_FILE'], overwrite)
@@ -135,7 +135,7 @@ def write_restapi_certificates(environment, overwrite):
     if set(ssl_keys) <= set(environment):
         logging.info('Writing REST Api custom ssl certificate')
         for k in ssl_keys:
-            write_file(environment[k], environment[k + '_FILE'], overwrite)
+            write_file(environment[k], environment[f'{k}_FILE'], overwrite)
         if 'SSL_RESTAPI_CA' in environment:
             logging.info('Writing REST Api ssl ca certificate')
             write_file(environment['SSL_RESTAPI_CA'], environment['SSL_RESTAPI_CA_FILE'], overwrite)
@@ -155,10 +155,7 @@ def deep_update(a, b):
 
     if type(a) is dict and type(b) is dict:
         for key in b:
-            if key in a:
-                a[key] = deep_update(a[key], b[key])
-            else:
-                a[key] = b[key]
+            a[key] = deep_update(a[key], b[key]) if key in a else b[key]
         return a
     if type(a) is list and type(b) is list:
         return a
@@ -386,13 +383,11 @@ hstore,hypopg,intarray,ltree,pgcrypto,pgq,pgq_node,pg_trgm,postgres_fdw,tablefun
 
 
 def get_provider():
-    provider = os.environ.get('SPILO_PROVIDER')
-    if provider:
+    if provider := os.environ.get('SPILO_PROVIDER'):
         if provider in {PROVIDER_AWS, PROVIDER_GOOGLE, PROVIDER_OPENSTACK, PROVIDER_LOCAL}:
             return provider
-        else:
-            logging.error('Unknown SPILO_PROVIDER: %s', provider)
-            return PROVIDER_UNSUPPORTED
+        logging.error('Unknown SPILO_PROVIDER: %s', provider)
+        return PROVIDER_UNSUPPORTED
 
     if os.environ.get('DEVELOP', '').lower() in ['1', 'true', 'on']:
         return PROVIDER_LOCAL
@@ -402,18 +397,17 @@ def get_provider():
         r = requests.get('http://169.254.169.254', timeout=2)
         if r.headers.get('Metadata-Flavor', '') == 'Google':
             return PROVIDER_GOOGLE
-        else:
-            # accessible on Openstack, will fail on AWS
-            r = requests.get('http://169.254.169.254/openstack/latest/meta_data.json')
-            if r.ok:
-                # make sure the response is parsable - https://github.com/Azure/aad-pod-identity/issues/943 and
-                # https://github.com/zalando/spilo/issues/542
-                r.json()
-                return PROVIDER_OPENSTACK
+        # accessible on Openstack, will fail on AWS
+        r = requests.get('http://169.254.169.254/openstack/latest/meta_data.json')
+        if r.ok:
+            # make sure the response is parsable - https://github.com/Azure/aad-pod-identity/issues/943 and
+            # https://github.com/zalando/spilo/issues/542
+            r.json()
+            return PROVIDER_OPENSTACK
 
-            # is accessible from both AWS and Openstack, Possiblity of misidentification if previous try fails
-            r = requests.get('http://169.254.169.254/latest/meta-data/ami-id')
-            return PROVIDER_AWS if r.ok else PROVIDER_UNSUPPORTED
+        # is accessible from both AWS and Openstack, Possiblity of misidentification if previous try fails
+        r = requests.get('http://169.254.169.254/latest/meta-data/ami-id')
+        return PROVIDER_AWS if r.ok else PROVIDER_UNSUPPORTED
     except (requests.exceptions.ConnectTimeout, requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout):
         logging.info("Could not connect to 169.254.169.254, assuming local Docker setup")
         return PROVIDER_LOCAL
@@ -436,12 +430,12 @@ def get_instance_metadata(provider):
         url = 'http://169.254.169.254/computeMetadata/v1/instance'  # metadata.google.internal
         mapping = {'zone': 'zone'}
         if not USE_KUBERNETES:
-            mapping.update({'id': 'id'})
+            mapping['id'] = 'id'
     elif provider == PROVIDER_AWS:
         url = 'http://169.254.169.254/latest/meta-data'
         mapping = {'zone': 'placement/availability-zone'}
         if not USE_KUBERNETES:
-            mapping.update({'ip': 'local-ipv4', 'id': 'instance-id'})
+            mapping |= {'ip': 'local-ipv4', 'id': 'instance-id'}
     elif provider == PROVIDER_OPENSTACK:
         mapping = {}  # Disable multi-url fetch
         url = 'http://169.254.169.254/openstack/latest/meta_data.json'
@@ -453,13 +447,13 @@ def get_instance_metadata(provider):
             url = 'http://169.254.169.254/2009-04-04/meta-data'
             r = requests.get(url)
             if r.ok:
-                mapping.update({'ip': 'local-ipv4', 'id': 'instance-id'})
+                mapping |= {'ip': 'local-ipv4', 'id': 'instance-id'}
     else:
         logging.info("No meta-data available for this provider")
         return metadata
 
     for k, v in mapping.items():
-        metadata[k] = requests.get('{}/{}'.format(url, v or k), timeout=2, headers=headers).text
+        metadata[k] = requests.get(f'{url}/{v or k}', timeout=2, headers=headers).text
 
     return metadata
 
@@ -467,16 +461,22 @@ def get_instance_metadata(provider):
 def set_extended_wale_placeholders(placeholders, prefix):
     """ checks that enough parameters are provided to configure cloning or standby with WAL-E """
     for name in ('S3', 'GS', 'GCS', 'SWIFT', 'AZ'):
-        if placeholders.get('{0}WALE_{1}_PREFIX'.format(prefix, name)) or\
-                name in ('S3', 'GS', 'AZ') and placeholders.get('{0}WALG_{1}_PREFIX'.format(prefix, name)) or\
-                placeholders.get('{0}WAL_{1}_BUCKET'.format(prefix, name)) and placeholders.get(prefix + 'SCOPE'):
+        if (
+            placeholders.get('{0}WALE_{1}_PREFIX'.format(prefix, name))
+            or name in ('S3', 'GS', 'AZ')
+            and placeholders.get('{0}WALG_{1}_PREFIX'.format(prefix, name))
+            or placeholders.get('{0}WAL_{1}_BUCKET'.format(prefix, name))
+            and placeholders.get(f'{prefix}SCOPE')
+        ):
             break
     else:
         return False
-    scope = placeholders.get(prefix + 'SCOPE')
-    dirname = 'env-' + prefix[:-1].lower() + ('-' + scope if scope else '')
-    placeholders[prefix + 'WALE_ENV_DIR'] = os.path.join(placeholders['RW_DIR'], 'etc', 'wal-e.d', dirname)
-    placeholders[prefix + 'WITH_WALE'] = True
+    scope = placeholders.get(f'{prefix}SCOPE')
+    dirname = f'env-{prefix[:-1].lower()}' + (f'-{scope}' if scope else '')
+    placeholders[f'{prefix}WALE_ENV_DIR'] = os.path.join(
+        placeholders['RW_DIR'], 'etc', 'wal-e.d', dirname
+    )
+    placeholders[f'{prefix}WITH_WALE'] = True
     return name
 
 
@@ -484,9 +484,11 @@ def set_walg_placeholders(placeholders, prefix=''):
     walg_supported = any(placeholders.get(prefix + n) for n in AUTO_ENABLE_WALG_RESTORE +
                          ('WAL_GS_BUCKET', 'WALE_GS_PREFIX', 'WALG_GS_PREFIX'))
     default = placeholders.get('USE_WALG', False)
-    placeholders.setdefault(prefix + 'USE_WALG', default)
+    placeholders.setdefault(f'{prefix}USE_WALG', default)
     for name in ('USE_WALG_BACKUP', 'USE_WALG_RESTORE'):
-        value = str(placeholders.get(prefix + name, placeholders[prefix + 'USE_WALG'])).lower()
+        value = str(
+            placeholders.get(prefix + name, placeholders[f'{prefix}USE_WALG'])
+        ).lower()
         placeholders[prefix + name] = 'true' if value == 'true' and walg_supported else None
 
 
@@ -609,9 +611,8 @@ def get_placeholders(provider):
         else:
             logging.warning("Clone method is set to basebackup, but no 'CLONE_SCOPE' "
                             "or 'CLONE_HOST' or 'CLONE_USER' or 'CLONE_PASSWORD' specified")
-    else:
-        if set_extended_wale_placeholders(placeholders, 'STANDBY_') == 'S3':
-            placeholders.setdefault('STANDBY_USE_WALG', 'true')
+    elif set_extended_wale_placeholders(placeholders, 'STANDBY_') == 'S3':
+        placeholders.setdefault('STANDBY_USE_WALG', 'true')
 
     placeholders.setdefault('STANDBY_WITH_WALE', '')
     placeholders.setdefault('STANDBY_HOST', '')
@@ -670,7 +671,9 @@ def get_placeholders(provider):
 
     # Depending on environment we take 1/4 or 1/5 of the memory, expressed in full MB's
     sb_ratio = 5 if USE_KUBERNETES else 4
-    placeholders['postgresql']['parameters']['shared_buffers'] = '{}MB'.format(int(os_memory_mb/sb_ratio))
+    placeholders['postgresql']['parameters'][
+        'shared_buffers'
+    ] = f'{int(os_memory_mb / sb_ratio)}MB'
     # # 1 connection per 30 MB, at least 100, at most 1000
     placeholders['postgresql']['parameters']['max_connections'] = min(max(100, int(os_memory_mb/30)), 1000)
 
@@ -735,13 +738,14 @@ def get_dcs_config(config, placeholders):
         if str(config['kubernetes'].pop('bypass_api_service', None)).lower() == 'true':
             config['kubernetes']['bypass_api_service'] = True
     else:
-        for dcs in PATRONI_DCS:
-            if dcs != 'kubernetes' and dcs in dcs_configs:
-                config = {dcs: dcs_configs[dcs]}
-                break
-        else:
-            config = {}  # Configuration can also be specified using either SPILO_CONFIGURATION or PATRONI_CONFIGURATION
-
+        config = next(
+            (
+                {dcs: dcs_configs[dcs]}
+                for dcs in PATRONI_DCS
+                if dcs != 'kubernetes' and dcs in dcs_configs
+            ),
+            {},
+        )
     if placeholders['NAMESPACE'] not in ('default', ''):
         config['namespace'] = placeholders['NAMESPACE']
 
@@ -750,7 +754,7 @@ def get_dcs_config(config, placeholders):
 
 def write_log_environment(placeholders):
     log_env = defaultdict(lambda: '')
-    log_env.update(placeholders)
+    log_env |= placeholders
 
     aws_region = log_env.get('AWS_REGION')
     if not aws_region:

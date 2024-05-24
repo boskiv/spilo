@@ -41,7 +41,7 @@ def test_option_processing():
 
 
 def test_print_spilos():
-    spilos = list()
+    spilos = []
     print_spilos(spilos)
 
     spilos.append(Spilo(None, None, None, None, None, None, None))

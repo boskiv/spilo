@@ -15,7 +15,7 @@ def tail_postgres_log(weekday):
 
 
 def tail_postgres_logs():
-    weekday = datetime.datetime.today().isoweekday()
+    weekday = datetime.datetime.now().isoweekday()
     try:
         ret = tail_postgres_log(weekday)
     except Exception:
@@ -54,20 +54,19 @@ def perform_pitr(postgresql, cluster_version, bin_version, config):
         return wait_end_of_recovery(postgresql)
     except Exception:
         logs = tail_postgres_logs()
-        # Spilo has no other locales except en_EN.UTF-8, therefore we are safe here.
-        if int(cluster_version) >= 13 and 'recovery ended before configured recovery target was reached' in logs:
-            # Starting from version 13 Postgres stopped promoting when recovery target wasn't reached.
-            # In order to improve the user experience we reset all possible recovery targets and retry.
-            recovery_conf = config[config['method']].get('recovery_conf', {})
-            if recovery_conf:
-                for target in ('name', 'time', 'xid', 'lsn'):
-                    recovery_conf['recovery_target_' + target] = ''
-            logger.info('Retrying point-in-time recovery without target')
-            if not postgresql.bootstrap.bootstrap(config):
-                raise Exception('Point-in-time recovery failed.\nLOGS:\n--\n' + tail_postgres_logs())
-            return wait_end_of_recovery(postgresql)
-        else:
+        if (
+            int(cluster_version) < 13
+            or 'recovery ended before configured recovery target was reached'
+            not in logs
+        ):
             raise Exception('Point-in-time recovery failed.\nLOGS:\n--\n' + logs)
+        if recovery_conf := config[config['method']].get('recovery_conf', {}):
+            for target in ('name', 'time', 'xid', 'lsn'):
+                recovery_conf[f'recovery_target_{target}'] = ''
+        logger.info('Retrying point-in-time recovery without target')
+        if not postgresql.bootstrap.bootstrap(config):
+            raise Exception('Point-in-time recovery failed.\nLOGS:\n--\n' + tail_postgres_logs())
+        return wait_end_of_recovery(postgresql)
 
 
 def main():

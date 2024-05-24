@@ -24,8 +24,9 @@ class _PostgresqlUpgrade(Postgresql):
                     adjust_extensions(shared_preload_libraries, version)
 
     def no_bg_mon(self):
-        shared_preload_libraries = self.config.get('parameters').get('shared_preload_libraries')
-        if shared_preload_libraries:
+        if shared_preload_libraries := self.config.get('parameters').get(
+            'shared_preload_libraries'
+        ):
             tmp = filter(lambda a: a != "bg_mon", map(lambda a: a.strip(), shared_preload_libraries.split(",")))
             self.config.get('parameters')['shared_preload_libraries'] = ",".join(tmp)
 
@@ -148,7 +149,7 @@ class _PostgresqlUpgrade(Postgresql):
         return True
 
     def switch_pgdata(self):
-        self._old_data_dir = self._data_dir + '_old'
+        self._old_data_dir = f'{self._data_dir}_old'
         self.cleanup_old_pgdata()
         os.rename(self._data_dir, self._old_data_dir)
         if getattr(self, '_new_data_dir', None):
@@ -158,13 +159,13 @@ class _PostgresqlUpgrade(Postgresql):
 
     def switch_back_pgdata(self):
         if os.path.exists(self._data_dir):
-            self._new_data_dir = self._data_dir + '_new'
+            self._new_data_dir = f'{self._data_dir}_new'
             self.cleanup_new_pgdata()
             os.rename(self._data_dir, self._new_data_dir)
         os.rename(self._old_data_dir, self._data_dir)
 
     def pg_upgrade(self, check=False):
-        upgrade_dir = self._data_dir + '_upgrade'
+        upgrade_dir = f'{self._data_dir}_upgrade'
         if os.path.exists(upgrade_dir) and os.path.isdir(upgrade_dir):
             shutil.rmtree(upgrade_dir)
 
@@ -204,8 +205,8 @@ class _PostgresqlUpgrade(Postgresql):
         logger.info('initdb config: %s', initdb_config)
 
         self._new_data_dir = os.path.abspath(self._data_dir)
-        self._old_data_dir = self._new_data_dir + '_old'
-        self._data_dir = self._new_data_dir + '_new'
+        self._old_data_dir = f'{self._new_data_dir}_old'
+        self._data_dir = f'{self._new_data_dir}_new'
         self.remove_new_data(self._data_dir)
         old_postgresql_conf = self.config._postgresql_conf
         self.config._postgresql_conf = os.path.join(self._data_dir, 'postgresql.conf')
@@ -225,11 +226,11 @@ class _PostgresqlUpgrade(Postgresql):
                 else:
                     self.config.get('parameters')[name] = value
 
-        # for the new version we maybe need to add some libs to the shared_preload_libraries
-        shared_preload_libraries = self.config.get('parameters').get('shared_preload_libraries')
-        if shared_preload_libraries:
+        if shared_preload_libraries := self.config.get('parameters').get(
+            'shared_preload_libraries'
+        ):
             self._old_shared_preload_libraries = self.config.get('parameters')['shared_preload_libraries'] =\
-                append_extensions(shared_preload_libraries, float(version))
+                    append_extensions(shared_preload_libraries, float(version))
             self.no_bg_mon()
 
         if not self.bootstrap._initdb(initdb_config):
@@ -258,7 +259,10 @@ class _PostgresqlUpgrade(Postgresql):
 
     def analyze(self, in_stages=False):
         vacuumdb_args = ['--analyze-in-stages'] if in_stages else []
-        logger.info('Rebuilding statistics (vacuumdb%s)', (' ' + vacuumdb_args[0] if in_stages else ''))
+        logger.info(
+            'Rebuilding statistics (vacuumdb%s)',
+            f' {vacuumdb_args[0]}' if in_stages else '',
+        )
         if 'username' in self.config.superuser:
             vacuumdb_args += ['-U', self.config.superuser['username']]
         vacuumdb_args += ['-Z', '-j']

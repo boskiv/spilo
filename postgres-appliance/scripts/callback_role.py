@@ -10,9 +10,9 @@ import sys
 import time
 
 KUBE_SERVICE_DIR = '/var/run/secrets/kubernetes.io/serviceaccount/'
-KUBE_NAMESPACE_FILENAME = KUBE_SERVICE_DIR + 'namespace'
-KUBE_TOKEN_FILENAME = KUBE_SERVICE_DIR + 'token'
-KUBE_CA_CERT = KUBE_SERVICE_DIR + 'ca.crt'
+KUBE_NAMESPACE_FILENAME = f'{KUBE_SERVICE_DIR}namespace'
+KUBE_TOKEN_FILENAME = f'{KUBE_SERVICE_DIR}token'
+KUBE_CA_CERT = f'{KUBE_SERVICE_DIR}ca.crt'
 
 KUBE_API_URL = 'https://kubernetes.default.svc.cluster.local/api/v1/namespaces'
 
@@ -38,15 +38,17 @@ def api_patch(namespace, kind, name, entity_name, body):
     count = 0
     while True:
         try:
-            token = read_token()
-            if token:
+            if token := read_token():
                 r = requests.patch(api_url, data=body, verify=KUBE_CA_CERT,
                                    headers={'Content-Type': 'application/strategic-merge-patch+json',
                                             'Authorization': 'Bearer {0}'.format(token)})
                 if r.status_code in range(200, 206):
                     break
                 logger.warning('Unable to change %s: %s', entity_name, r.text)
-                if not (r.status_code in (500, 503, 504) or 'retry-after' in r.headers):
+                if (
+                    r.status_code not in (500, 503, 504)
+                    and 'retry-after' not in r.headers
+                ):
                     break
             else:
                 logger.warning('Unable to read Kubernetes authorization token')
@@ -60,7 +62,7 @@ def api_patch(namespace, kind, name, entity_name, body):
 
 def change_pod_role_label(namespace, new_role):
     body = json.dumps({'metadata': {'labels': {LABEL: new_role}}})
-    api_patch(namespace, 'pods', os.environ['HOSTNAME'], '{} label'.format(LABEL), body)
+    api_patch(namespace, 'pods', os.environ['HOSTNAME'], f'{LABEL} label', body)
 
 
 def change_endpoints(namespace, cluster):
